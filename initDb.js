@@ -1,6 +1,6 @@
 // initDb.js
 import fs from "fs";
-import pool from "./db.js";
+import pool from "./src/db.js";
 
 async function initDB() {
   try {
