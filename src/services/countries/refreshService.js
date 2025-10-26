@@ -4,6 +4,10 @@ import { computeCountryFields } from "./computeGDP.js";
 import { saveCountries } from "./dbOperations.js";
 import { generateSummaryImage } from "./generateImage.js";
 
+/**
+ * Refresh countries and generate summary image asynchronously
+ * Returns immediately after DB save
+ */
 export async function refreshCountries() {
   // Step 1: Fetch external data
   const { countries, rates } = await fetchCountriesAndRates();
@@ -26,10 +30,12 @@ export async function refreshCountries() {
   // Step 3: Save all to DB (transaction safe)
   const dbResult = await saveCountries(processed);
 
-  // Step 4: Generate summary image
-  await generateSummaryImage(dbResult.last_refreshed_at);
+  // Step 4: Generate summary image asynchronously (non-blocking)
+  generateSummaryImage(dbResult.last_refreshed_at).catch(err => {
+    console.error("Failed to generate summary image:", err);
+  });
 
-  // Step 5: Return result
+  // Step 5: Return result immediately after DB commit
   return {
     success: true,
     count: dbResult.count,

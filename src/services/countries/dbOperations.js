@@ -2,17 +2,16 @@
 import pool from "../../db.js";
 
 /**
- * Updates or inserts countries in a single transaction.
- * Returns the number of processed countries.
+ * Saves or updates countries in parallel using Promise.all
  */
 export async function saveCountries(countriesWithGDP) {
   const conn = await pool.getConnection();
-
   try {
     await conn.beginTransaction();
     const now = new Date();
 
-    for (const c of countriesWithGDP) {
+    // Prepare array of promises
+    const promises = countriesWithGDP.map(async (c) => {
       const {
         name,
         capital,
@@ -24,15 +23,14 @@ export async function saveCountries(countriesWithGDP) {
         flag_url,
       } = c;
 
-      // Check if country exists (case-insensitive)
+      // Check if country exists
       const [existing] = await conn.query(
         `SELECT id FROM countries WHERE LOWER(name) = LOWER(?) LIMIT 1`,
         [name]
       );
 
       if (existing.length > 0) {
-        // Update existing country
-        await conn.query(
+        return conn.query(
           `UPDATE countries
            SET capital=?, region=?, population=?, currency_code=?,
                exchange_rate=?, estimated_gdp=?, flag_url=?, last_refreshed_at=?
@@ -50,8 +48,7 @@ export async function saveCountries(countriesWithGDP) {
           ]
         );
       } else {
-        // Insert new country
-        await conn.query(
+        return conn.query(
           `INSERT INTO countries
            (name, capital, region, population, currency_code, exchange_rate, estimated_gdp, flag_url, last_refreshed_at)
            VALUES (?,?,?,?,?,?,?,?,?)`,
@@ -68,18 +65,15 @@ export async function saveCountries(countriesWithGDP) {
           ]
         );
       }
-    }
+    });
 
-    // Ensure refresh_meta row exists and update last_refreshed_at
-    await conn.query(
-      `INSERT INTO refresh_meta (id, last_refreshed_at)
-       VALUES (1, ?)
-       ON DUPLICATE KEY UPDATE last_refreshed_at = ?`,
-      [now, now]
-    );
+    // Run all DB operations in parallel
+    await Promise.all(promises);
+
+    // Update refresh_meta
+    await conn.query(`UPDATE refresh_meta SET last_refreshed_at = ? WHERE id = 1`, [now]);
 
     await conn.commit();
-
     return { count: countriesWithGDP.length, last_refreshed_at: now };
   } catch (err) {
     await conn.rollback();
