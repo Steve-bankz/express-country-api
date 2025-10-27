@@ -11,8 +11,16 @@ async function initDB() {
       await pool.query(stmt);
     }
 
+    // Ensure refresh_meta row exists for tracking last_refreshed_at
+    const [rows] = await pool.query("SELECT COUNT(*) AS cnt FROM refresh_meta WHERE id = 1");
+    if (rows[0].cnt === 0) {
+      await pool.query(
+        "INSERT INTO refresh_meta (id, last_refreshed_at) VALUES (1, NOW())"
+      );
+    }
+
     console.log("Database initialized successfully!");
-    process.exit(0); // Stop script
+    process.exit(0);
   } catch (err) {
     console.error("Error initializing database:", err);
     process.exit(1);
@@ -20,3 +28,4 @@ async function initDB() {
 }
 
 initDB();
+

@@ -3,6 +3,7 @@ import pool from "../../db.js";
 
 /**
  * Saves or updates countries in parallel using Promise.all
+ * Ensures refresh_meta.last_refreshed_at is always updated
  */
 export async function saveCountries(countriesWithGDP) {
   const conn = await pool.getConnection();
@@ -10,7 +11,7 @@ export async function saveCountries(countriesWithGDP) {
     await conn.beginTransaction();
     const now = new Date();
 
-    // Prepare array of promises
+    // Prepare array of promises for all countries
     const promises = countriesWithGDP.map(async (c) => {
       const {
         name,
@@ -70,8 +71,21 @@ export async function saveCountries(countriesWithGDP) {
     // Run all DB operations in parallel
     await Promise.all(promises);
 
-    // Update refresh_meta
-    await conn.query(`UPDATE refresh_meta SET last_refreshed_at = ? WHERE id = 1`, [now]);
+    // Ensure refresh_meta row exists
+    const [metaCheck] = await conn.query(
+      "SELECT COUNT(*) AS cnt FROM refresh_meta WHERE id = 1"
+    );
+    if (metaCheck[0].cnt === 0) {
+      await conn.query(
+        "INSERT INTO refresh_meta (id, last_refreshed_at) VALUES (1, ?)",
+        [now]
+      );
+    } else {
+      await conn.query(
+        `UPDATE refresh_meta SET last_refreshed_at = ? WHERE id = 1`,
+        [now]
+      );
+    }
 
     await conn.commit();
     return { count: countriesWithGDP.length, last_refreshed_at: now };
